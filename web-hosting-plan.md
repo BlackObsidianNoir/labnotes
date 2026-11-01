@@ -1,6 +1,6 @@
-# Web App Hosting Plan v1.0
+# Web App Hosting Plan v1.1
 
-Prepared for Edward Nathan Page, October 31, 2026. Claude's response to ChatGPT's proposal (Render plus Cloudflare Access). Nothing has been deployed.
+Prepared for Edward Nathan Page, October 31, 2026. Agreed by Claude and ChatGPT after one round of review. Nothing has been deployed.
 
 ## Recommendation
 
@@ -22,14 +22,15 @@ ChatGPT's security principles stay: app-level authorization on every page and AP
 | 10 | 10 x $13 = $130/mo | about $5/mo |
 | 20 | 20 x $13 = $260/mo | about $5/mo |
 
-Render storage is extra. Workers Paid is $5/month and includes 10 million requests and 30 million CPU milliseconds; family apps will not approach that. Domain about $10 to $15 a year. Access is free up to 50 users.
+Render storage is extra. Workers Paid is $5/month and includes 10 million requests and 30 million CPU milliseconds. That is a starting price with usage allowances, not a flat rate, but family apps should stay well inside it. Domain about $10 to $15 a year. Access is free up to 50 users.
 
 ## Permissions
 
 - **Cloudflare Access decides who gets in.** One Access policy per app, built from reusable groups ("Ed only", "Family"). Family uses one-time email codes; Ed uses Google or GitHub with a passkey.
-- **The app decides view or edit.** A members table maps email to viewer or editor, checked server-side on every write.
-- **Revoking:** remove the person from the Access policy and revoke their sessions.
-- **Known gap:** access lives in two places (Access and the members table). Default unknown users to viewer and review both quarterly.
+- **The app requires an active membership.** A members table maps email to viewer, editor or admin. Unknown or removed users are denied, not treated as viewers. Every protected read, write and export checks it.
+- **Identity comes from the validated Access token.** Apps with static assets must validate the token as Cloudflare documents; missing identity means no access.
+- **Revoking:** disable the membership and revoke their Access sessions; test this while the person is logged in.
+- Access lives in two places (Access and the members table). Enforcement on every request is the control; a quarterly review is housekeeping.
 
 ## Medication dashboard and HIPAA
 
@@ -44,13 +45,15 @@ Web apps live on Cloudflare; trading lives on the M1 and, later, Render. Differe
 - Worker with static assets and an API, one D1 database, members table, Access on all hostnames.
 - Pull request with tests; merge to main deploys; preview versions are Access-protected.
 - Code rollback: Workers keeps prior versions; revert in one click.
-- Data rollback: D1 Time Travel restores to any minute in the last 30 days (paid plan), plus a nightly export to the Synology.
+- Data rollback: D1 Time Travel restores to any minute in the last 30 days (paid plan). Code rollback does not undo database changes, so migrations need their own recovery step.
+- Independent backup: nightly encrypted export to the Synology, with a failure alert and a tested restore. This has to be built; it is not automatic.
+- Previews use sample data and separate databases, never production credentials.
 
 ## Trade-offs
 
-- Workers code is JavaScript or TypeScript, not Python. Claude writes it either way.
+- Default language is TypeScript. Python Workers exist, with more limited package support; use them where they fit.
 - D1 is SQLite, not Postgres. Fine at this size, and it exports to plain SQL.
-- Apps needing Python, background jobs or heavy compute go to Render, using ChatGPT's design: disable onrender.com, validate the Access token's audience and expiry, and protect or disable preview environments.
+- Apps needing dependencies or long-running processes that don't fit Workers go to Render, using ChatGPT's design: disable onrender.com, validate the Access token's audience and expiry, and protect or disable preview environments.
 
 ## Setup sequence
 
@@ -62,9 +65,16 @@ Web apps live on Cloudflare; trading lives on the M1 and, later, Render. Differe
    - A family viewer can open the app but cannot write.
    - Removing a user locks them out.
    - A bad deploy rolls back.
-   - The database restores from Time Travel and from the Synology export.
+   - The database restores from Time Travel and from the Synology export, into a separate test database, with records checked.
+   - A user approved for one app cannot open another app or call its API.
+   - Unknown and removed users cannot read or export data, including from an existing session.
+   - Forged, expired and wrong-app tokens are rejected.
+   - No private data leaks through caches, offline storage, error messages or logs.
+   - Cross-site requests cannot make changes.
+   - A failed database migration can be recovered alongside a code rollback.
 5. Build Mom's dashboard on the template with sample data.
-6. Switch to real data only after those tests pass.
+6. App-specific test for the dashboard: double taps, retries and simultaneous edits never double-count a dose or silently overwrite inventory.
+7. Switch to real data only after those tests pass.
 
 The App Launcher is optional once there are three or more apps.
 
@@ -72,9 +82,9 @@ The App Launcher is optional once there are three or more apps.
 
 High on the cost math, the HIPAA answer and Workers' Access coverage, checked against current Render and Cloudflare documentation on October 31, 2026. Moderate that Workers fits every future app; some will likely need Render. The recommendation flips to Render if most apps turn out to need Python or background jobs.
 
-## Questions for ChatGPT
+## Change log
 
-1. Where is this plan wrong, risky or overcomplicated?
-2. Do you agree Workers plus D1 beats Render for small family apps? If not, why?
-3. Is there a gap in the two-layer permission model?
-4. Anything missing from the proof tests in step 4?
+| Version | Date | Changes |
+|---|---|---|
+| 1.1 | October 31, 2026 | ChatGPT review adopted: unknown users denied (was viewer); token validation for static-asset apps; expanded proof tests; dose double-count test; backup and migration recovery clarified; cost and Python wording corrected |
+| 1.0 | October 31, 2026 | First version |
